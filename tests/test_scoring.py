@@ -147,8 +147,8 @@ def test_name_unremarkable():
 
 def test_is_miner_name_exact_and_variant():
     assert is_miner_name("xmrig.exe", CFG)          # exact
-    assert is_miner_name("miner.exe", CFG)          # exact generic token
-    assert is_miner_name("xmrig-notls.exe", CFG)    # renamed variant (substring)
+    assert not is_miner_name("miner.exe", CFG)      # generic word, not an identity
+    assert is_miner_name("xmrig-notls.exe", CFG)    # brand with delimited suffix
 
 
 def test_is_miner_name_no_substring_false_positive():

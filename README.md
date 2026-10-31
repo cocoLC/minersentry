@@ -50,9 +50,8 @@ which this project never runs on your host.
 ## The signals
 
 Each process gets a set of independent sub-scores (0–100), combined into one
-verdict. Most behavioral convictions require corroboration. This fork also
-promotes an explicit miner process/executable name independently of load; see
-the cloud VM policy below.
+verdict. Behavioral convictions require corroboration. A miner-like name alone
+does not trigger a mining alert; see the cloud VM policy below.
 
 | Signal | What it measures |
 |---|---|
@@ -223,16 +222,23 @@ No API reporting, scheduled service or process termination is enabled by this ch
 
 ## Cloud VM detection policy in this fork
 
-Known miner names are actionable even while idle: the name signal sets a
-Likely Miner score without requiring CPU/GPU load. Matching includes known
-brands and their delimiter/numeric suffix variants, generic miner tokens such as
-`miner-cuda12` / `miner64`, and the executable basename when the visible name
-is disguised. It does not match arbitrary embedded `miner` text in `examiner`,
-`DataMiner`, `minerals` or `minerva`. WinRing0 is a hardware helper, not a miner
-identity, and is excluded. A signed executable does not override an explicit
-miner identity. This name-based policy flags a name, not proof of actual hashing;
-a renamed benign program can trigger it, and fully renamed miners still need
-other evidence. No process is terminated or reported to an API by this policy.
+Known miner names are supporting evidence, not standalone alerts. An idle process
+named `xmrig` stays Clean unless other evidence justifies a higher verdict;
+sustained CPU or GPU activity plus a known miner name can still trigger Likely
+Miner through the existing conviction pairs. Other corroborated rules (including
+memory/dataset or pool evidence) remain active even at low CPU/GPU load.
+
+Name matching includes known brands, delimiter/numeric suffix variants such as
+`xmrig-notls`, `gminer64` and `nbminer_v42`, and the executable basename when
+the visible name is disguised. Generic `miner`, `miner-cuda12`, `cuda-miner`
+and `tracker-miner-fs-3` do not establish a miner identity. Neither do arbitrary
+embedded brand strings such as `notxmrig` or `xmrighelper`. The legacy config
+key `known_miner_substrings` is retained but now uses the same brand boundaries.
+Remove generic `miner` entries from custom name/alias lists if present; config
+overrides replace the defaults. WinRing0 remains excluded. A signed executable
+does not erase a known brand signal, but that signal still needs corroboration.
+Names are not proof of hashing; fully renamed miners need other evidence.
+No process is terminated or reported to an API by this policy.
 
 CPU/GPU activity, a large mapping and generic cryptographic constants / algorithm
 names alone are weak evidence. Their combination is capped below Suspicious.

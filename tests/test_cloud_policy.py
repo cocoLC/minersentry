@@ -1,4 +1,4 @@
-"""Cloud VM policy: benign compute stays clean; clear miner names do not slip."""
+"""Cloud VM policy: benign names stay clean; miner names need corroboration."""
 import time
 
 import pytest
@@ -6,32 +6,41 @@ import pytest
 from minersentry import memscan
 from minersentry.config import Config
 from minersentry.engine import Engine, ProcInfo
-from minersentry.scoring import Signal, combine, is_miner_name, score_memory, score_name
+from minersentry.scoring import (
+    Signal, combine, is_miner_name, score_cpu, score_gpu, score_memory, score_name,
+)
 
 CFG = Config()
 
 
 @pytest.mark.parametrize('name', sorted(CFG.known_miner_names))
-def test_known_miner_name_is_actionable_even_when_idle(name):
+def test_known_miner_name_alone_does_not_alert_when_idle(name):
     signal = score_name(name, '/opt/' + name, CFG)
     score, verdict = combine([signal], CFG)
-    assert verdict == 'Likely Miner'
-    assert score >= 75
+    assert signal.score == CFG.name_score_known
+    assert verdict == 'Clean'
+    assert score < 45
 
 
 @pytest.mark.parametrize('name', [
-    'miner-cuda12', 'miner_cuda11', 'miner64', 'cuda-miner', 'miner.exe',
     'gminer_3_44', 'gminer64', 't-rex-0.26.8.exe', 'SRBMiner-MULTI', 'SRBMiner-MULTI.exe',
     'xmrig-notls.exe', 'lolMiner.exe', 'nbminer_v42',
 ])
 def test_miner_variants_are_not_lost(name):
     assert is_miner_name(name, CFG)
-    assert combine([score_name(name, '/opt/' + name, CFG)], CFG)[1] == 'Likely Miner'
+    name_signal = score_name(name, '/opt/' + name, CFG)
+    assert combine([name_signal], CFG)[1] == 'Clean'
+    assert combine([name_signal, Signal('cpu', 92, '')], CFG)[1] == 'Likely Miner'
+    assert combine([name_signal, Signal('gpu', 80, '')], CFG)[1] == 'Likely Miner'
 
 
 @pytest.mark.parametrize('name', [
     'examiner', 'DataMiner.exe', 'minerals', 'minerva', 'python', 'pt_main_thread',
     'torch_train', 'WinRing0.exe', 'blender', 'jupyter-lab',
+    'tracker-miner-fs-3', 'tracker-miner-fs', 'tracker-miner-apps', 'data-miner',
+    'miner', 'miner.exe', 'miner-cuda12', 'miner_cuda11', 'miner64', 'cuda-miner',
+    'notxmrig', 'xmrighelper', 'xmrigreport', 'xmrig2helper',
+    'xmrigminerals', 'backup-xmrig', 'notnbminer',
 ])
 def test_legitimate_names_do_not_match_bare_substring(name):
     assert not is_miner_name(name, CFG)
@@ -39,10 +48,43 @@ def test_legitimate_names_do_not_match_bare_substring(name):
 
 
 @pytest.mark.parametrize('exe', [
-    '/opt/mining/miner-cuda12', r'C:\tools\SRBMiner-MULTI.exe',
+    '/opt/mining/nbminer_v42', r'C:\tools\SRBMiner-MULTI.exe',
 ])
 def test_executable_name_is_checked_when_comm_is_disguised(exe):
-    assert combine([score_name('worker', exe, CFG)], CFG)[1] == 'Likely Miner'
+    name_signal = score_name('worker', exe, CFG)
+    assert name_signal.score == CFG.name_score_known
+    assert combine([name_signal], CFG)[1] == 'Clean'
+    assert combine([name_signal, Signal('gpu', 80, '')], CFG)[1] == 'Likely Miner'
+
+
+@pytest.mark.parametrize('name', ['tracker-miner-fs-3', 'tracker-miner-fs', 'data-miner', 'miner-cuda12'])
+@pytest.mark.parametrize('cpu,gpu', [(0, 0), (92, 0), (0, 80), (92, 80)])
+def test_generic_miner_names_do_not_convict_even_under_load(name, cpu, gpu):
+    # Include generic memory/dataset cues: none establish a miner identity.
+    signals = [score_name(name, '/usr/libexec/' + name, CFG),
+               Signal('cpu', cpu, ''), Signal('gpu', gpu, ''),
+               Signal('memory', 30, ''), Signal('dataset', 70, '')]
+    assert signals[0].score == 0
+    assert combine(signals, CFG)[1] == 'Clean'
+
+
+@pytest.mark.parametrize('name', sorted(CFG.known_miner_names))
+def test_known_brand_requires_sustained_cpu_or_gpu_samples(name):
+    name_signal = score_name(name, '/opt/' + name, CFG)
+    startup_cpu = score_cpu([100.0], 32, CFG)
+    startup_gpu = score_gpu([97.0], False, False, True, CFG)
+    assert combine([name_signal, startup_cpu, startup_gpu], CFG)[1] == 'Clean'
+    cpu = score_cpu([100.0] * CFG.cpu_min_samples, 32, CFG)
+    gpu = score_gpu([97.0] * CFG.gpu_min_samples, False, False, True, CFG)
+    assert combine([name_signal, cpu], CFG)[1] == 'Likely Miner'
+    assert combine([name_signal, gpu], CFG)[1] == 'Likely Miner'
+
+
+def test_old_config_aliases_use_boundaries_instead_of_substring_search():
+    cfg = Config(known_miner_names=frozenset(), known_miner_substrings=frozenset({'xmrig'}))
+    assert is_miner_name('xmrig-notls.exe', cfg)
+    assert not is_miner_name('notxmrig', cfg)
+    assert not is_miner_name('xmrighelper', cfg)
 
 
 @pytest.mark.parametrize('memory_score', [0, 12, 24, 30, 32])
@@ -75,9 +117,11 @@ def test_large_dataset_with_miner_strings_still_catches_throttled_miner():
 def test_signed_status_does_not_suppress_explicit_miner_identity():
     engine = Engine(cfg=Config())
     info = ProcInfo(987654)
-    info.name, info.exe, info.trusted = 'worker', '/opt/miner-cuda12', True
+    info.name, info.exe, info.trusted = 'worker', '/opt/nbminer_v42', True
     signals = engine._build_signals(info, [], time.time())
-    assert combine(signals, engine.cfg)[1] == 'Likely Miner'
+    assert next(s.score for s in signals if s.name == 'name') == CFG.name_score_known
+    assert combine(signals, engine.cfg)[1] == 'Clean'
+    assert combine(signals + [Signal('gpu', 80, '')], engine.cfg)[1] == 'Likely Miner'
     engine._meta[info.pid] = (info.name, info.exe, '', True)
     assert info.pid in engine.deep_scan_targets()
 
@@ -104,8 +148,9 @@ def test_live_name_refresh_does_not_keep_cached_benign_name(monkeypatch, tmp_pat
     monkeypatch.setattr(engine_module.psutil, 'net_connections', lambda **kw: [])
     monkeypatch.setattr(engine_module.psutil, 'cpu_percent', lambda *a: 0)
     assert engine.scan_once()[0].verdict == 'Clean'
-    fake.info['name'] = 'miner-cuda12'
+    fake.info['name'] = 'nbminer_v42'
     result = engine.scan_once()[0]
-    assert result.name == 'miner-cuda12'
-    assert result.verdict == 'Likely Miner'
+    assert result.name == 'nbminer_v42'
+    assert result.verdict == 'Clean'
+    assert next(s.score for s in result.signals if s.name == 'name') == CFG.name_score_known
     assert pid in engine.deep_scan_targets()

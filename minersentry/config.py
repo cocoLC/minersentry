@@ -65,18 +65,16 @@ class Config:
     pool_refresh_seconds: float = 900.0
 
     # -- name/path signal ----------------------------------------------------
-    # Known basename identities, with delimiter/numeric suffix variants. The
-    # generic miner token also uses word boundaries, never an arbitrary embedded
-    # substring, so examiner.exe / DataMiner.exe are not flagged.
+    # Known brand basenames, with delimiter/numeric suffix variants. Generic
+    # "miner" is not an identity: normal desktop indexers use that word too.
     known_miner_names: frozenset[str] = field(default_factory=lambda: frozenset({
         "xmrig", "xmr-stak", "nbminer", "phoenixminer", "t-rex", "trex",
         "lolminer", "ethminer", "cgminer", "bfgminer", "ccminer", "cpuminer",
         "minerd", "nanominer", "gminer", "teamredminer", "srbminer",
-        "xmrig-cuda", "wildrig", "miner",
+        "xmrig-cuda", "wildrig",
     }))
-    # Distinctive identifiers matched as a SUBSTRING too, to catch renamed
-    # variants (e.g. "xmrig-notls.exe"). Only tokens unlikely to appear inside an
-    # unrelated program name belong here — never bare "miner".
+    # Legacy config key retained for compatibility. Entries are now brand
+    # aliases with the same basename/suffix boundaries, not arbitrary substrings.
     known_miner_substrings: frozenset[str] = field(default_factory=lambda: frozenset({
         "xmrig", "xmr-stak", "nbminer", "phoenixminer", "lolminer", "cgminer",
         "bfgminer", "ccminer", "cpuminer", "nanominer", "teamredminer",

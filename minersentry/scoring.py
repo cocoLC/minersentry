@@ -32,20 +32,19 @@ def name_stem(name: str) -> str:
 def is_miner_name(name: str, cfg: Config) -> bool:
     """True if the process name matches a known miner.
 
-    Check basenames, known brands with suffixes, and a separate miner token.
-    Only distinctive identifiers get unrestricted substring matching, so
-    `xmrig-notls.exe` is caught but `examiner.exe` / `DataMiner.exe` is not.
+    Check basenames and known brands with delimiter/numeric suffixes. A generic
+    `miner` token is not a brand: tracker-miner-fs-3 is a desktop indexer.
+    The legacy substring list is treated as brand aliases, not unbounded text.
     """
     stem = name_stem(ntpath.basename(name or ""))
-    if stem in cfg.known_miner_names:
+    brands = cfg.known_miner_names | cfg.known_miner_substrings
+    if stem in brands:
         return True
-    if any(stem.startswith(k) and len(stem) > len(k)
-           and (stem[len(k)] in "-_." or stem[len(k)].isdigit())
-           for k in cfg.known_miner_names):
+    if any(stem.startswith(k) and re.fullmatch(
+               r"(?:[-_.][a-z0-9]+|\d+)(?:[-_.][a-z0-9]+)*", stem[len(k):])
+           for k in brands if k):
         return True
-    if "miner" in cfg.known_miner_names and re.search(r"(?:^|[-_.])miner(?:$|[-_.]|\d)", stem):
-        return True
-    return any(k in stem for k in cfg.known_miner_substrings)
+    return False
 
 
 def score_cpu(recent: list[float], ncpu: int, cfg: Config) -> Signal:
@@ -219,21 +218,16 @@ def combine(signals: list[Signal], cfg: Config) -> tuple[int, str]:
     blended = sum(w * by.get(key, 0) for key, w in cfg.weights.items())
 
     # Corroboration: a lone signal isn't enough unless it is standalone hard
-    # evidence (strong memory / known miner name / confirmed evasion).
+    # evidence (strong memory / confirmed evasion). A name needs corroboration.
     present = sum(1 for s in signals if s.score >= cfg.corrob_nonzero_score)
     corroborated = present >= cfg.corrob_min_signals
     hard_evidence = (by.get("memory", 0) >= cfg.hard_memory
-                     or by.get("name", 0) >= cfg.hard_name
                      or by.get("probe", 0) >= cfg.hard_probe)
 
     score = int(round(blended))
     miner_artifact = hard_evidence or by.get("network", 0) >= cfg.net_score_strong
     if (not corroborated and not hard_evidence) or not miner_artifact:
         score = min(score, cfg.suspicious_cap)
-
-    # A known miner name is actionable even when the process is idle/throttled.
-    if by.get("name", 0) >= cfg.hard_name:
-        score = max(score, by["name"])
 
     # Conviction pairs: a behavioral signal + a corroborating one is diagnostic.
     for a, ma, b, mb, floor in cfg.conviction_rules:
