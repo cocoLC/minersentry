@@ -185,6 +185,39 @@ scanner correctly won't flag them, so the table measures MinerSentry's
 miners), not a signature head-to-head — a real comparison needs live malware in
 an isolated VM, which the harness never runs itself.
 
+## Ubuntu / Linux NVIDIA GPU collection
+
+Linux NVIDIA sampling is available in this fork with:
+
+```bash
+python -m minersentry.cli --duration 60 --gpu --json
+```
+
+The GUI uses the same collector. The VM needs an NVIDIA driver and
+`nvidia-smi` on PATH. No CUDA Toolkit or PyTorch dependency is added.
+Check collection separately with `nvidia-smi pmon -s u -c 5`.
+
+The collector parses per-process SM activity from `nvidia-smi pmon -s u -c 1`.
+Only compute-only (`C`) rows are scored; graphics (`G`) and mixed (`C+G`) rows
+are excluded. A PID using multiple GPUs receives the maximum utilization,
+not the sum. SM activity is a Linux compute proxy, not the same metric as
+Windows PDH compute-engine utilization. Thresholds need workload validation.
+Linux window ownership is not collected, so Windows window-based dampening
+is unavailable. High GPU activity alone must not establish mining.
+
+Unsupported `-` values are not converted to zero. Missing utilization resets
+that PID's GPU history to prevent stale high-load evidence. Driver/command
+failures and compute rows with no usable SM measurements emit a warning to
+stderr; they must not be interpreted as a successful clean bill of health.
+GPU-busy processes enter memory-scan candidates even when CPU use is low.
+GPU percentage is SM activity; pmon `mem` is memory activity, not VRAM usage.
+
+Initial scope: Linux NVIDIA full-GPU passthrough. MIG, AMD, mixed graphics /
+compute, real-miner detection accuracy, and native Windows hardware regression
+remain to be validated. The upstream PID-based engine cache remains unchanged;
+rapid PID reuse between scans can still affect cached process evidence.
+No API reporting, scheduled service or process termination is enabled by this change.
+
 ## False positives
 
 A cryptominer detector is only useful if it doesn't flag the legitimate heavy

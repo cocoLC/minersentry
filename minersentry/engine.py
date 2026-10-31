@@ -218,6 +218,11 @@ class Engine:
         for pid in (force or ()):                      # explicit --pid targets
             _add(pid)
         protected = len(targets)  # busy + forced targets are never truncated
+        with self._gpu_lock:
+            gpu_busy = [pid for pid, history in self._gpu_hist.items()
+                        if history and history[-1] >= self.cfg.gpu_mean_moderate]
+        for pid in gpu_busy:                          # GPU-only work, any CPU
+            _add(pid)
         for pid, _ip, _port in list(self._conn_seen):  # pool-connected, any CPU
             _add(pid)
         for pid, meta in list(self._meta.items()):     # miner-like name, any CPU
@@ -440,6 +445,10 @@ class Engine:
         """Push a GPU-compute snapshot (from a background sampler). Appends each
         PID's compute % to its short history; records window/compute-context sets."""
         with self._gpu_lock:
+            # Retire stale evidence when a PID disappears or telemetry fails.
+            # Missing data is not proof of idleness; reset instead of adding zero.
+            for pid in set(self._gpu_hist) - set(util):
+                self._gpu_hist.pop(pid, None)
             for pid, pct in util.items():
                 self._gpu_hist[pid].append(pct)
             if window_pids is not None:

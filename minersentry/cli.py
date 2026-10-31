@@ -30,7 +30,7 @@ def run_session(duration: float, cfg: Config | None = None,
     Returns (engine, last results, first_detection) where first_detection maps a
     PID to the elapsed seconds at which it first scored non-Clean (time-to-detect).
     With `gpu_sample`, each pass also samples per-process GPU compute (slower, via
-    typeperf) so the headless scan can score the GPU signal like the GUI does.
+    typeperf on Windows, nvidia-smi pmon on Linux) so the headless scan can score the GPU signal like the GUI does.
     `force_pids` are always memory-scanned even if idle (so --pid genuinely targets
     those processes, not just filters the report).
     """
