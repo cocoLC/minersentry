@@ -9,6 +9,8 @@ that gathers inputs from psutil and calls into here.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import ntpath
+import re
 
 from .config import Config
 
@@ -30,12 +32,18 @@ def name_stem(name: str) -> str:
 def is_miner_name(name: str, cfg: Config) -> bool:
     """True if the process name matches a known miner.
 
-    Exact stem match against the full name list, plus a substring match against
-    only the *distinctive* identifiers — so a renamed `xmrig-notls.exe` is caught
-    while an unrelated `examiner.exe` / `DataMiner.exe` is not.
+    Check basenames, known brands with suffixes, and a separate miner token.
+    Only distinctive identifiers get unrestricted substring matching, so
+    `xmrig-notls.exe` is caught but `examiner.exe` / `DataMiner.exe` is not.
     """
-    stem = name_stem(name)
+    stem = name_stem(ntpath.basename(name or ""))
     if stem in cfg.known_miner_names:
+        return True
+    if any(stem.startswith(k) and len(stem) > len(k)
+           and (stem[len(k)] in "-_." or stem[len(k)].isdigit())
+           for k in cfg.known_miner_names):
+        return True
+    if "miner" in cfg.known_miner_names and re.search(r"(?:^|[-_.])miner(?:$|[-_.]|\d)", stem):
         return True
     return any(k in stem for k in cfg.known_miner_substrings)
 
@@ -146,9 +154,9 @@ def score_name(name: str, exe: str, cfg: Config) -> Signal:
     exe_l = (exe or "").lower()
     score = 0
     bits: list[str] = []
-    if is_miner_name(name, cfg):
+    if is_miner_name(name, cfg) or is_miner_name(exe, cfg):
         score = max(score, cfg.name_score_known)
-        bits.append("known miner name")
+        bits.append("known miner process/executable name")
     if exe_l:
         for hint in cfg.suspicious_dir_hints:
             if hint in exe_l:
@@ -219,8 +227,13 @@ def combine(signals: list[Signal], cfg: Config) -> tuple[int, str]:
                      or by.get("probe", 0) >= cfg.hard_probe)
 
     score = int(round(blended))
-    if not corroborated and not hard_evidence:
+    miner_artifact = hard_evidence or by.get("network", 0) >= cfg.net_score_strong
+    if (not corroborated and not hard_evidence) or not miner_artifact:
         score = min(score, cfg.suspicious_cap)
+
+    # A known miner name is actionable even when the process is idle/throttled.
+    if by.get("name", 0) >= cfg.hard_name:
+        score = max(score, by["name"])
 
     # Conviction pairs: a behavioral signal + a corroborating one is diagnostic.
     for a, ma, b, mb, floor in cfg.conviction_rules:

@@ -63,8 +63,8 @@ class Engine:
         self._warm: set[int] = set()
         self._self_pid = os.getpid()
         self._mem_cache: dict[int, memscan.MemScanResult] = {}  # from deep scans
-        # Static per-PID metadata cache (name/exe/username/trusted don't change
-        # for a PID's lifetime; recomputing exe()/username()/Authenticode every
+        # Per-PID metadata cache (refresh the process name on every pass).
+        # Recomputing exe()/username()/Authenticode every
         # pass for ~300 processes made each pass multi-second).
         self._meta: dict[int, tuple[str, str, str, bool]] = {}
         self._last_verdict: dict[int, str] = {}
@@ -165,7 +165,7 @@ class Engine:
             if mem_sig.score:
                 mem_sig = Signal("memory", int(mem_sig.score * cfg.trusted_dampen),
                                  mem_sig.detail + " (trusted-signed: dampened)")
-            if name_sig.score:
+            if name_sig.score and not (is_miner_name(info.name, cfg) or is_miner_name(info.exe, cfg)):
                 name_sig = Signal("name", int(name_sig.score * cfg.trusted_dampen),
                                   name_sig.detail + " (trusted-signed: dampened)")
 
@@ -226,7 +226,7 @@ class Engine:
         for pid, _ip, _port in list(self._conn_seen):  # pool-connected, any CPU
             _add(pid)
         for pid, meta in list(self._meta.items()):     # miner-like name, any CPU
-            if is_miner_name(meta[0], self.cfg):
+            if is_miner_name(meta[0], self.cfg) or is_miner_name(meta[1], self.cfg):
                 _add(pid)
         for pid in list(self._big_mem_pids):            # ~2 GiB dataset, any CPU
             _add(pid)
@@ -343,6 +343,10 @@ class Engine:
                     username = ""
                 trusted = trust.is_trusted(exe, self.cfg.trusted_dirs)
                 meta = (name, exe, username, trusted)
+                self._meta[p.pid] = meta
+            live_name = p.info.get("name")
+            if live_name and live_name != meta[0]:
+                meta = (live_name, *meta[1:])
                 self._meta[p.pid] = meta
             info.name, info.exe, info.username, info.trusted = meta
             if os.path.basename(info.exe).lower() == "minersentry.exe":

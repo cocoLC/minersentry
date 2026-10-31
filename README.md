@@ -50,8 +50,9 @@ which this project never runs on your host.
 ## The signals
 
 Each process gets a set of independent sub-scores (0–100), combined into one
-verdict. A process only reaches **Likely Miner** when several signals agree —
-that corroboration requirement is what keeps false positives down.
+verdict. Most behavioral convictions require corroboration. This fork also
+promotes an explicit miner process/executable name independently of load; see
+the cloud VM policy below.
 
 | Signal | What it measures |
 |---|---|
@@ -219,6 +220,26 @@ compute, real-miner detection accuracy, and native Windows hardware regression
 remain to be validated. The upstream PID-based engine cache remains unchanged;
 rapid PID reuse between scans can still affect cached process evidence.
 No API reporting, scheduled service or process termination is enabled by this change.
+
+## Cloud VM detection policy in this fork
+
+Known miner names are actionable even while idle: the name signal sets a
+Likely Miner score without requiring CPU/GPU load. Matching includes known
+brands and their delimiter/numeric suffix variants, generic miner tokens such as
+`miner-cuda12` / `miner64`, and the executable basename when the visible name
+is disguised. It does not match arbitrary embedded `miner` text in `examiner`,
+`DataMiner`, `minerals` or `minerva`. WinRing0 is a hardware helper, not a miner
+identity, and is excluded. A signed executable does not override an explicit
+miner identity. This name-based policy flags a name, not proof of actual hashing;
+a renamed benign program can trigger it, and fully renamed miners still need
+other evidence. No process is terminated or reported to an API by this policy.
+
+CPU/GPU activity, a large mapping and generic cryptographic constants / algorithm
+names alone are weak evidence. Their combination is capped below Suspicious.
+Memory scoring caps these generic cues below the hard-memory threshold; real
+miner/protocol string hits retain their scoring, as do corroborated mining rules.
+This reduces the risk of ML workloads being convicted merely for using resources.
+It does not exempt Python, PyTorch, training directories or allowlisted users.
 
 ## False positives
 

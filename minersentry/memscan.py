@@ -85,7 +85,12 @@ class MemScanResult:
         s = sum(h.weight for h in self.hits)
         if self.large_page_dataset:
             s += 30
-        return min(100, s)
+        # Large mappings, algorithm names and crypto constants also occur in ML.
+        has_miner_string = any(
+            h.where == "string" and h.label not in {
+                "RandomX algorithm name", "RandomX variant tag", "CryptoNight algorithm name"
+            } for h in self.hits)
+        return min(100 if has_miner_string else 30, s)
 
 
 if IS_WINDOWS:

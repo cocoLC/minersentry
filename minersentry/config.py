@@ -65,14 +65,14 @@ class Config:
     pool_refresh_seconds: float = 900.0
 
     # -- name/path signal ----------------------------------------------------
-    # Exact stem matches (the whole process name, .exe stripped). Generic tokens
-    # like "miner" live here ONLY — matched exactly, never as a substring, so
-    # legit apps such as examiner.exe / DataMiner.exe are not flagged.
+    # Known basename identities, with delimiter/numeric suffix variants. The
+    # generic miner token also uses word boundaries, never an arbitrary embedded
+    # substring, so examiner.exe / DataMiner.exe are not flagged.
     known_miner_names: frozenset[str] = field(default_factory=lambda: frozenset({
         "xmrig", "xmr-stak", "nbminer", "phoenixminer", "t-rex", "trex",
         "lolminer", "ethminer", "cgminer", "bfgminer", "ccminer", "cpuminer",
         "minerd", "nanominer", "gminer", "teamredminer", "srbminer",
-        "xmrig-cuda", "wildrig", "miner", "winring0",
+        "xmrig-cuda", "wildrig", "miner",
     }))
     # Distinctive identifiers matched as a SUBSTRING too, to catch renamed
     # variants (e.g. "xmrig-notls.exe"). Only tokens unlikely to appear inside an
