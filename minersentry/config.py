@@ -157,7 +157,7 @@ class Config:
         ("gpu", 60, "memory", 60, 82),
         ("gpu", 60, "name", 70, 85),
         ("gpu", 55, "network", 60, 85),
-        ("gpu", 60, "cpu", 45, 80),
+        # CPU + GPU saturation also occurs in normal CUDA/ML workloads.
         # RandomX ~2 GiB dataset + resident miner strings is diagnostic even at
         # low CPU — this is what catches a heavily-throttled stealth miner.
         ("dataset", 60, "memory", 60, 82),

@@ -203,7 +203,9 @@ are excluded. A PID using multiple GPUs receives the maximum utilization,
 not the sum. SM activity is a Linux compute proxy, not the same metric as
 Windows PDH compute-engine utilization. Thresholds need workload validation.
 Linux window ownership is not collected, so Windows window-based dampening
-is unavailable. High GPU activity alone must not establish mining.
+is unavailable. High GPU activity alone must not establish mining. CPU + GPU saturation
+also occurs in normal CUDA workloads, so the default GPU/CPU-only conviction
+pair is removed in this fork; miner-specific corroboration is still required.
 
 Unsupported `-` values are not converted to zero. Missing utilization resets
 that PID's GPU history to prevent stale high-load evidence. Driver/command

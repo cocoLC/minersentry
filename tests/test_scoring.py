@@ -236,3 +236,19 @@ def test_verdict_bands():
     assert combine([sig("cpu", 35), sig("memory", 35)], CFG)[1] in ("Clean", "Suspicious")
     hi, v = combine([sig("cpu", 92), sig("memory", 100), sig("network", 70)], CFG)
     assert v == "Likely Miner"
+
+
+def test_cpu_and_gpu_load_alone_do_not_convict_cuda_workload():
+    score, verdict = combine([sig("cpu", 92), sig("gpu", 80)], CFG)
+    assert verdict != "Likely Miner"
+    assert score < 75
+
+
+def test_cuda_load_with_generic_large_memory_region_is_not_mining():
+    signals = [sig("cpu", 92), sig("gpu", 80), sig("memory", 30), sig("dataset", 70)]
+    assert combine(signals, CFG)[1] != "Likely Miner"
+
+
+def test_gpu_mining_specific_evidence_still_convicts():
+    for evidence, value in [("name", 85), ("network", 60), ("memory", 60)]:
+        assert combine([sig("gpu", 80), sig(evidence, value)], CFG)[1] == "Likely Miner"
