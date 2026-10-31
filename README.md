@@ -222,6 +222,34 @@ No API reporting, scheduled service or process termination is enabled by this ch
 
 ## Cloud VM detection policy in this fork
 
+### Optional NVIDIA GPU-only scan
+
+```bash
+python -m minersentry.cli --duration 45 --gpu-only --json
+```
+
+`--gpu-only` implies GPU sampling and restricts both process inspection and
+memory/perf probes to PIDs returned by NVIDIA's compute-process query. It includes
+zero-utilization processes still holding a compute context; pure graphics and
+CPU-only processes are excluded. Scope is refreshed each pass, and `--pid` cannot
+override it. GPU load alone still does not establish mining.
+
+This mode requires a working `nvidia-smi` on Windows or Linux. A failed, missing,
+timed-out or unsupported process query exits nonzero instead of reporting a clean
+empty scan. A successful empty query is valid. Per-process SM utilization may be
+unavailable even when compute PIDs are readable; sampling warnings still apply.
+System-wide hidden-CPU accounting is disabled because the process list is partial.
+The default all-process mode and `--gpu` alone retain their existing behavior.
+CPU mining and miners that release their compute context are outside this mode.
+
+The separately deployed `minersentry_report.py` must also be updated to accept
+and forward `--gpu-only`. Keep its existing SQLite state file. For example:
+
+```bash
+python minersentry_report.py --gpu-only             # preview
+python minersentry_report.py --gpu-only --send      # report new alerts
+```
+
 Known miner names are supporting evidence, not standalone alerts. An idle process
 named `xmrig` stays Clean unless other evidence justifies a higher verdict;
 sustained CPU or GPU activity plus a known miner name can still trigger Likely

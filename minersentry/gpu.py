@@ -83,6 +83,33 @@ def parse_nvidia_compute_apps(text: str) -> set[int]:
 
 
 # -- thin collectors --------------------------------------------------------
+def compute_pids() -> set[int]:
+    """Strict NVIDIA compute-context query for GPU-only scan scope.
+
+    A successful empty list is valid. Driver/command/format failures must not
+    become an empty scope and a misleading successful clean scan.
+    """
+    try:
+        result = subprocess.run(
+            ["nvidia-smi", "--query-compute-apps=pid", "--format=csv,noheader,nounits"],
+            capture_output=True, text=True, timeout=6.0,
+            creationflags=_CREATE_NO_WINDOW if IS_WINDOWS else 0)
+    except (OSError, subprocess.SubprocessError) as error:
+        raise RuntimeError(f"GPU process query failed: {error}") from error
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "no diagnostic output").strip()[:300]
+        raise RuntimeError(f"GPU process query failed (exit {result.returncode}): {detail}")
+    pids: set[int] = set()
+    for line in result.stdout.splitlines():
+        value = line.strip()
+        if not value:
+            continue
+        if not value.isdecimal() or int(value) <= 0:
+            raise RuntimeError(f"GPU process query returned unsupported data: {value[:100]}")
+        pids.add(int(value))
+    return pids
+
+
 def _run(args: list[str], timeout: float) -> str:
     try:
         p = subprocess.run(args, capture_output=True, text=True, timeout=timeout,
