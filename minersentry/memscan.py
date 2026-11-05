@@ -194,7 +194,7 @@ def _scan_windows(pid: int, budget_bytes: int, max_region_read: int,
                 result.large_page_dataset = True
 
             if committed and readable and not guarded:
-                to_read = min(region_size, max_region_read)
+                to_read = min(region_size, max_region_read, budget_bytes - result.bytes_scanned)
                 if _k32.ReadProcessMemory(handle, ctypes.c_void_p(base),
                                           buf, to_read, ctypes.byref(read)):
                     n = read.value
@@ -275,7 +275,7 @@ def _scan_linux(pid: int, budget_bytes: int, max_region_read: int,
                 break  # budget spent; large_dataset flag already set from maps
             if "r" not in perms:
                 continue
-            to_read = min(end - start, max_region_read)
+            to_read = min(end - start, max_region_read, budget_bytes - result.bytes_scanned)
             try:
                 mem.seek(start)
                 data = mem.read(to_read)
