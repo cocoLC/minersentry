@@ -81,15 +81,16 @@ def score_memory(mem_scanned: bool, mem_score: int, labels: list[str],
     if not mem_scanned:
         return Signal("memory", 0, f"memory not scanned ({error or 'not scanned'})")
     if not labels:
+        if error:
+            return Signal("memory", 0, f"incomplete ({bytes_scanned // (1024*1024)} MiB scanned; {error})")
         return Signal("memory", 0, f"clean ({bytes_scanned // (1024*1024)} MiB scanned)")
     return Signal("memory", mem_score, "; ".join(labels[:5]))
 
 
 def score_network(hits: list[tuple[str, int, bool, bool, bool]], cfg: Config) -> Signal:
     """hits: list of (remote_ip, remote_port, is_common_legit_port, persisted,
-    known_pool). A connection to a resolved known-pool IP ranks highest; failing
-    that, a stratum-typical port, with a bump when the connection has persisted
-    across many scans (a transient hit is far weaker)."""
+    known_pool). Port numbers and connection duration alone are weak evidence;
+    normal GPU workloads also use these ports for business services."""
     if not hits:
         return Signal("network", 0, "no pool-like connections")
     known = [h for h in hits if h[4]]
@@ -97,19 +98,10 @@ def score_network(hits: list[tuple[str, int, bool, bool, bool]], cfg: Config) ->
         ip, port, _, _, _ = known[0]
         return Signal("network", cfg.net_score_known_pool,
                       f"connected to a KNOWN mining pool at {ip}:{port}")
-    strong = [h for h in hits if not h[2]]
-    if strong:
-        ip, port, _, persisted, _ = strong[0]
-        score = cfg.net_score_strong + (cfg.net_score_persist if persisted else 0)
-        note = " (long-lived)" if persisted else ""
-        return Signal("network", min(100, score),
-                      f"established to {ip}:{port} (stratum-typical port){note}")
     ip, port, _, persisted, _ = hits[0]
-    if persisted:
-        return Signal("network", cfg.net_score_strong,
-                      f"long-lived connection to {ip}:{port} (ambiguous port, persisted)")
-    return Signal("network", cfg.net_score_weak,
-                  f"connection to {ip}:{port} (ambiguous port)")
+    return Signal("network", min(30, cfg.net_score_weak),
+                  f"connection to {ip}:{port} (port-only evidence; protocol unknown)"
+                  + (" (long-lived)" if persisted else ""))
 
 
 def score_gpu(recent_util: list[float], has_window: bool, allowlisted: bool,
